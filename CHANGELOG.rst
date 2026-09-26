@@ -12,6 +12,9 @@ Bugs:
 	  a tunnel closed cleanly by the far side reports alive=False
 	* Tunnel defines auto_reconnect, so a closed tunnel records its real cause, not an AttributeError
 	* An upload write error without a reqid fails the upload instead of stopping the listener
+	* device_toast awaits its command (it raised every time) and sends the caller's title
+	* An empty HTTP download (the agent never connected back) is a failure that falls back to the
+	  websocket, not a successful 0-byte file
 
 Improvements:
 	* Downloads keep 64 blocks in flight instead of one per round trip (~45 KB/s -> line speed
