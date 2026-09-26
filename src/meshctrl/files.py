@@ -267,6 +267,11 @@ class Files(tunnel.Tunnel):
 
     def _http_download(self, url, target, timeout):
         response = self._http_opener.open(url, timeout=timeout)
+        # MeshCentral names the file only once the agent has opened it. When the agent never
+        # connects back (e.g. a proxy in front of the server blocks devicefile.ashx), the server
+        # gives up after its 30 s relay timeout and ends the response empty, with status 200.
+        if response.headers.get("Content-Disposition") is None:
+            raise exceptions.FileTransferError("The agent did not answer the HTTP download", {"result": False, "size": 0})
         shutil.copyfileobj(response, target)
 
     @util._check_socket
