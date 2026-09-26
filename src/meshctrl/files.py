@@ -72,7 +72,8 @@ class Files(tunnel.Tunnel):
         request = self._current_request
         if request is None or request["finished"].is_set():
             return
-        request["error"] = exceptions.SocketError(f"Socket closed during {request['type']}: {self._main_loop_error!r}")
+        reason = util._describe_exception(self._main_loop_error) if self._main_loop_error is not None else "closed"
+        request["error"] = exceptions.SocketError(f"Socket closed during the {request['type']}: {reason}")
         request["errored"].set()
         request["finished"].set()
 

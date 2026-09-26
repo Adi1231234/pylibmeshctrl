@@ -35,6 +35,10 @@ meshctrl
 Library for remotely interacting with a
 `MeshCentral <https://meshcentral.com/>`__ server instance
 
+This is a fork of `HuFlungDu/pylibmeshctrl <https://github.com/HuFlungDu/pylibmeshctrl>`__ with
+fixes for tunnels and file transfers (see CHANGELOG.rst, version 1.3.3.post1). Install it with
+``pip install "libmeshctrl @ git+https://github.com/Adi1231234/pylibmeshctrl@1.3.3.post1"``.
+
 Installation
 ------------
 

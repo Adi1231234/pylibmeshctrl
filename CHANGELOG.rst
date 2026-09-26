@@ -2,6 +2,23 @@
 Changelog
 =========
 
+version 1.3.3.post1 (fork: Adi1231234/pylibmeshctrl)
+====================================================
+
+Bugs:
+	* Shell and file tunnels keep reading after MeshCentral's relay control message (a text frame
+	  about 5 minutes into a tunnel), which used to end the listener and hang whatever was running
+	* A file transfer fails with SocketError when its tunnel closes, instead of waiting forever, and
+	  a tunnel closed cleanly by the far side reports alive=False
+	* Tunnel defines auto_reconnect, so a closed tunnel records its real cause, not an AttributeError
+	* An upload write error without a reqid fails the upload instead of stopping the listener
+
+Improvements:
+	* Downloads keep 64 blocks in flight instead of one per round trip (~45 KB/s -> line speed
+	  through a relay with a 320 ms round trip)
+	* Uploads send a chunk only as one is acked (16 in flight), so large uploads no longer starve
+	  the websocket keepalive and drop at ~20 s
+
 version 1.3.3
 =============
 

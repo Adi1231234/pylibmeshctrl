@@ -138,6 +138,16 @@ def compare_dict(dict1, dict2):
     except Exception:
         return False
 
+def _describe_exception(exc):
+    '''"Type: message" for an exception, with exception groups flattened to their causes, since
+    str() of a TaskGroup's group names none of them.'''
+    if isinstance(exc, BaseExceptionGroup):
+        inner = "; ".join(_describe_exception(e) for e in exc.exceptions)
+        if inner:
+            return inner
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
 def _check_socket(f):
     async def _check_errs(self):
         if not self.alive and self._main_loop_error is not None:
