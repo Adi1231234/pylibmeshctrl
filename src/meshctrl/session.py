@@ -1965,7 +1965,7 @@ class Session(object):
         if isinstance(nodeids, str):
             nodeids = [nodeids]
 
-        data = self._send_command({ "action": 'toast', "nodeids": nodeids, "title": "MeshCentral", "msg": message }, "device_toast", timeout=timeout)
+        data = await self._send_command({ "action": 'toast', "nodeids": nodeids, "title": title, "msg": message }, "device_toast", timeout=timeout)
 
         if data.get("result", "ok").lower() != "ok":
             raise exceptions.ServerError(data["result"])
