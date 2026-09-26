@@ -367,6 +367,16 @@ class Files(tunnel.Tunnel):
     async def _listen_data_task(self, websocket):
         async for message in websocket:
             if self.initialized.is_set():
+                if isinstance(message, str):
+                    message = message.encode()
+                if message.startswith(b'{"ctrlChannel":"102938","type":"'):
+                    try:
+                        ctrl_cmd = json.loads(message)
+                        # Skip control commands, like ping/pong
+                        if ctrl_cmd.get("type", None) is not None:
+                            continue
+                    except:
+                        pass
                 if message[0] == 123 and self._current_request is not None and self._current_request["type"] not in ("upload", "download"):
                     await self._handle_action(message)
                 elif self._current_request is not None and self._current_request["type"] == "upload":
