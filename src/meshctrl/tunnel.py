@@ -26,6 +26,9 @@ class Tunnel(object):
 
         self._message_queue = asyncio.Queue()
         self._send_task = None
+        # A relay cannot be resumed on a new socket, so a closed tunnel stays closed. _main_loop
+        # reads this, and without it every close was recorded as an AttributeError.
+        self.auto_reconnect = False
         self._listen_task = None
 
     async def close(self):
@@ -72,7 +75,7 @@ class Tunnel(object):
                 self._socket_open.set()
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        tg.create_task(self._listen_data_task(websocket))
+                        tg.create_task(self._listen(websocket))
                         tg.create_task(self._send_data_task(websocket))
                 except* websockets.ConnectionClosed as e:
                     self._socket_open.clear()
@@ -89,6 +92,13 @@ class Tunnel(object):
         while True:
             message = await self._message_queue.get()
             await websocket.send(message)
+
+    async def _listen(self, websocket):
+        await self._listen_data_task(websocket)
+        # The loop above just ends when the far side closes cleanly, while the sender keeps waiting
+        # on its queue, so the tunnel would look alive forever. recv() on a closed socket raises
+        # ConnectionClosedOK, which ends the tunnel the same way a dropped connection does.
+        await websocket.recv()
 
     async def _listen_data_task(self, websocket):
         raise NotImplementedError("Listen data not implemented")

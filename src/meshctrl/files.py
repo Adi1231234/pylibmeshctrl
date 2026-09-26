@@ -53,6 +53,23 @@ class Files(tunnel.Tunnel):
         self._request_id = (self._request_id+1)%(2**32-1)
         return self._request_id
 
+    async def _main_loop(self):
+        try:
+            await super()._main_loop()
+        finally:
+            self._fail_requests()
+
+    def _fail_requests(self):
+        """The socket is gone: fail the request in flight, which would otherwise wait forever on an
+        event nothing sets, and (by cancelling the request handler) every queued one."""
+        self._handle_requests_task.cancel()
+        request = self._current_request
+        if request is None or request["finished"].is_set():
+            return
+        request["error"] = exceptions.SocketError(f"Socket closed during {request['type']}: {self._main_loop_error!r}")
+        request["errored"].set()
+        request["finished"].set()
+
     async def close(self):
         self._handle_requests_task.cancel()
         try:
