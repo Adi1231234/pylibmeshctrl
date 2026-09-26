@@ -37,6 +37,12 @@ class Files(tunnel.Tunnel):
         self._current_request = None
         self._handle_requests_task = asyncio.create_task(self._handle_requests())
         self._chunk_size = 65564
+        # Blocks (16 KB) and chunks (_chunk_size) kept in flight. The agent sends one download
+        # block per ack and a transfer waited a full round trip for each; 1 MB in flight fills the
+        # line instead. Uploads are held to what the agent has acked, so the socket never queues
+        # so much that the websocket keepalive ping times out behind it.
+        self._download_window = 64
+        self._upload_window = 16
         proxies = {}
         if self._session._proxy is not None:
             # We don't know which protocol the user is going to use, but we only need support one at a time, so just assume both
@@ -320,34 +326,40 @@ class Files(tunnel.Tunnel):
             cmd = json.loads(data)
         except:
             return
-        if cmd["reqid"] == self._current_request["id"]:
+        # A failed write is reported without a reqid, and can only be the upload in progress
+        if cmd.get("reqid", self._current_request["id"]) == self._current_request["id"]:
             if cmd["action"] == "uploaddone":
                 self._current_request["return"] = {"result": True, "size": self._current_request["size"]}
                 self._current_request["finished"].set()
             elif cmd["action"] == "uploadstart":
-                while True:
-                    data = self._current_request["source"].read(self._chunk_size)
-                    if len(data) == 0:
-                        self._current_request["complete"] = True
-                        if self._current_request["inflight"] == 0:
-                            await self._message_queue.put(json.dumps({ "action": 'uploaddone', "reqid": self._current_request["id"]}))
+                for _ in range(self._upload_window):
+                    if not await self._send_upload_chunk():
                         break
-                    else:
-                        self._current_request["size"] += len(data)
-                        if data[0] == 0 or data[0] == 123:
-                            data = b'\0' + data
-                        await self._message_queue.put(data)
-                        self._current_request["inflight"] += 1
-                    await asyncio.sleep(0)
             elif cmd["action"] == "uploadack":
                 self._current_request["inflight"] -= 1
-                if self._current_request["inflight"] == 0 and self._current_request["complete"]:
-                    await self._message_queue.put(json.dumps({ "action": 'uploaddone', "reqid": self._current_request["id"]}))
+                await self._send_upload_chunk()
             elif cmd["action"] == "uploaderror":
                 self._current_request["return"] = {"result": False, "size": self._current_request["size"]}
                 self._current_request["error"] = exceptions.FileTransferError("Errored", self._current_request["return"])
                 self._current_request["errored"].set()
                 self._current_request["finished"].set()
+
+    async def _send_upload_chunk(self):
+        '''Queue the next chunk, or uploaddone once every chunk is sent and acked. Returns whether a chunk was queued.'''
+        request = self._current_request
+        if not request["complete"]:
+            data = request["source"].read(self._chunk_size)
+            if len(data) > 0:
+                request["size"] += len(data)
+                if data[0] == 0 or data[0] == 123:
+                    data = b'\0' + data
+                request["inflight"] += 1
+                await self._message_queue.put(data)
+                return True
+            request["complete"] = True
+        if request["inflight"] == 0:
+            await self._message_queue.put(json.dumps({ "action": 'uploaddone', "reqid": request["id"]}))
+        return False
 
     async def _handle_download(self, data):
         cmd = None
@@ -370,6 +382,11 @@ class Files(tunnel.Tunnel):
                     return
                 if cmd["sub"] == "start":
                     await self._message_queue.put(json.dumps({ "action": 'download', "sub": 'startack', "id": self._current_request["id"] }))
+                    # The agent answers startack and each ack with one block (its startack loop is an
+                    # `if`), so extra acks up front are what keep the window full. It ignores acks
+                    # once the file is done.
+                    for _ in range(self._download_window - 1):
+                        await self._message_queue.put(json.dumps({ "action": 'download', "sub": 'ack', "id": self._current_request["id"] }))
                 elif cmd["sub"] == "cancel":
                     self._current_request["return"] = {"result": False, "size": self._current_request["size"]}
                     self._current_request["error"] = exceptions.FileTransferCancelled("Cancelled", self._current_request["return"])
